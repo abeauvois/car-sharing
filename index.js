@@ -33,9 +33,23 @@ const combinedData = parsedFiles.reduce((acc, data) => acc.concat(data), []);
 
 const data = aq.from(combinedData);
 
-
-
 const items = data.select(aq.names('url','url2', 'seller','description', 'price','pack','properties','year','mileage','energy','gear','address'))
+
+const brands = ['renault', 'citroen','peugeot', 'fiat', 'dacia', 'kia', 'skoda', 'ford','mpm']
+
+const models = {
+  renault: ['zoe', 'twingo'],
+  citroen: ['c1','c2','c3'],
+  fiat: ['panda','ddr'],
+  peugeot: ['108','208','308'],
+}
+
+const variants = {
+  renault: ['twingo iii', 'twingo v'],
+  citroen: ['vc1','vc2','vc3'],
+  fiat: ['panda iii', 'panda 2020'],
+  peugeot: ['108','208','308'],
+}
 
 const cars = items.derive({price_int: car => op.parse_int(op.replace(op.replace(car.price,'€',''), /[\s\\]/g, ''))})
 .derive({description_norm: aq.escape(c => normalize_description(c.description))})
