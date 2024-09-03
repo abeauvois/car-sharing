@@ -3,7 +3,7 @@ const brands = ['renault', 'citroen', 'peugeot', 'fiat', 'dacia', 'kia', 'skoda'
 const models = {
   renault: ['zoe', 'twingo'],
   citroen: ['c1', 'c2', 'c3'],
-  fiat: ['panda', 'ddr'],
+  fiat: ['panda'],
   peugeot: ['108', '208', '308'],
 }
 

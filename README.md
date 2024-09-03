@@ -1,5 +1,13 @@
 # car-sharing
+## running
 
+```bash
+pnpm dev
+```
+
+then drag and drop a csv file into the vs code /csv folder
+
+## setup
 To install dependencies:
 
 ```bash
