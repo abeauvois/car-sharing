@@ -14,11 +14,11 @@ const carSchema = z.object({
   power: z.string().optional(),
 });
 
-export async function extractCarInfo(description: string) {
+export async function extractCarInfos(url: string, description: string) {
   const { object } = await generateObject({
     model: openai('gpt-4o-mini'),
     schema: carSchema,
-    prompt: `Extract the car brand, model, and power (if available) from the following description: "${description}". Keep in mind 
+    prompt: `Extract the car brand, model, and power (if available) from the following description: "${description}" and add the url ${url} as the first column. Keep in mind 
     the following car brands and their models:
 
     renault: ['zoe', 'twingo']
@@ -30,5 +30,27 @@ export async function extractCarInfo(description: string) {
   });
 
   return object;
+}
+
+// Define the schema for computer information
+const computerSchema = z.object({
+  computer_brand: z.string(),
+  processor_name: z.string(),
+  memory_size: z.string(),
+  storage_capacity: z.string().optional(),
+  screen_size: z.string().optional(),
+});
+
+export async function extractComputerInfos(computer: {description_norm: string}) {
+
+  console.log("ai thinking...");
+
+  const { object } = await generateObject({
+    model: openai('gpt-4o-mini'),
+    schema: computerSchema,
+    prompt: `Extract the Computer brand, processor name, memory size, storage capacity and screen size (if available) from the following description: "${computer.description_norm}"`,
+  });
+
+  return {...computer, ...object};
 }
 
