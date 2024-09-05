@@ -1,10 +1,10 @@
 {
   "name": "car-sharing",
-  "module": "index.js",
+  "module": "index.ts",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.prod.json --outDir dist/prod",
-    "dev": "bun run index.js",
+    "dev": "bun run index.ts",
     "test": "jest --coverage --verbose"
   },
   "devDependencies": {
@@ -18,6 +18,9 @@
     "ai": "^3.3.26",
     "arquero": "^6.0.1",
     "d3-dsv": "^3.0.1",
+    "ollama": "^0.5.8",
+    "ollama-ai-provider": "^0.13.0",
+    "openai": "^4.57.3",
     "zod": "^3.23.8"
   }
 }

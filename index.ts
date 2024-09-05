@@ -4,7 +4,7 @@ import { exit } from 'process';
 import { watch } from "fs";
 import { ingest } from './ingest';
 import { findBrandFrom } from './car.domain';
-import { extractCarInfos, extractComputerInfos } from './ai';
+import { extractCarInfos, extractComputerInfos, generateLocally } from './ai';
 
 const watchedDir = `${import.meta.dir}/csv`
 
@@ -41,19 +41,22 @@ async function extractCarInfosFromDescription(cars) {
 async function extractComputerInfosFromDescription(computers: aq.Table) {
   const colValues = computers.objects({ columns: ['url', 'description_norm', 'price_int', 'quality', 'volume_int'] });
   //console.log("🚀 ~ extractComputerInfosFromDescription ~ colValues:", colValues)
-  const result = await Promise.all(colValues.map(extractComputerInfos))
+  // const result = await Promise.all(colValues.map(extractComputerInfos))
+  const result = await generateLocally(colValues);
+  
   console.log("🚀 ~ ai computers ~ result:", result)
   return result;
 }
 
 function transformComputersData(computersData: aq.ColumnTable): aq.Table {
-  const items = computersData.select(aq.names('url', 'seller', 'company', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address', 'price2', 'price variation'))
+  // const items = computersData.select(aq.names('url', 'seller', 'company', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address', 'price2', 'price variation'))
+  const items = computersData.select(aq.names('url', 'seller', 'company', 'rating1', 'rating2', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address'))
 
-  return items.derive({ price_int: computer => op.parse_int(op.replace(op.replace(computer.price1 || computer.price2, '€', ''), /[\s\\]/g, '')) })
+  return items.derive({ price_int: computer => op.parse_int(op.replace(op.replace(computer.price1, '€', ''), /[\s\\]/g, '')) })
     .derive({ description_norm: aq.escape(c => normalize_description(c.description)) })
     //.derive({brand: aq.escape(c => findBrandFrom (c.description_norm))})
     .derive({ volume_int: computer => op.slice(op.match(computer.volume, /(\d*)/), 0, 1)[0] })
-    .select('url', 'description_norm', 'price1', 'price2', 'price_int', 'quality', 'volume_int')
+    .select('url', 'description_norm', 'price1', 'price_int', 'quality', 'volume_int')
     .filter(computer => computer.price_int) // remove null prices
     .slice(0, 15) // limit to 15 first computers
   //.slice(15)
@@ -69,24 +72,26 @@ const watcher = watch(watchedDir, async (event, filename) => {
   try {
 
     if (filename.includes('computer')) {
+      console.log('Processing computers data...');
+
       const computersData = await ingest(watchedDir, filename);
       const computers = transformComputersData(computersData);
       computers.print(100)
 
-      const enrichedComputers = await extractComputerInfosFromDescription(computers)
+       const enrichedComputers = await extractComputerInfosFromDescription(computers)
 
-      const cleanComputers = enrichedComputers.map(computer => {
-        return {
-          ...computer,
-          processor: computer.processor_name.match(/M\d/)?.[0],
-          hasSSD: computer.storage_capacity?.toLowerCase().includes('ssd'),
-          storage_int: Number(computer.storage_capacity?.toLowerCase().replace(' ssd', '').replace('tb', 'to').replace('gb', 'go').replace('to', '000').replace('go', '').replace(' ', '').replace('notspecified', ''))
-        }
-      })
+      // const cleanComputers = enrichedComputers.map(computer => {
+      //   return {
+      //     ...computer,
+      //     processor: computer.processor_name.match(/M\d/)?.[0],
+      //     hasSSD: computer.storage_capacity?.toLowerCase().includes('ssd'),
+      //     storage_int: Number(computer.storage_capacity?.toLowerCase().replace(' ssd', '').replace('tb', 'to').replace('gb', 'go').replace('to', '000').replace('go', '').replace(' ', '').replace('notspecified', ''))
+      //   }
+      // })
 
-      // transform enrichedComputers in json and save it with BunFile
-      const json = JSON.stringify(cleanComputers, null, ' ')
-      await Bun.write(`./output/enriched-${filename.split('.')[0]}.json`, json);
+      // // transform enrichedComputers in json and save it with BunFile
+      // const json = JSON.stringify(cleanComputers, null, ' ')
+      // await Bun.write(`./output/enriched-${filename.split('.')[0]}.json`, json);
 
       return
     }
