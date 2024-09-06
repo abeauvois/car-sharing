@@ -4,7 +4,7 @@ import { exit } from 'process';
 import { watch } from "fs";
 import { ingest } from './ingest';
 import { findBrandFrom } from './car.domain';
-import { extractCarInfos, extractComputerInfos, generateLocally } from './ai';
+import { extractCarInfos, extractComputerInfos, generateLocally, inferScrappedColumnsNames, type InferColumn } from './ai';
 
 const watchedDir = `${import.meta.dir}/csv`
 
@@ -43,22 +43,43 @@ async function extractComputerInfosFromDescription(computers: aq.Table) {
   //console.log("🚀 ~ extractComputerInfosFromDescription ~ colValues:", colValues)
   // const result = await Promise.all(colValues.map(extractComputerInfos))
   const result = await generateLocally(colValues);
-  
+
   console.log("🚀 ~ ai computers ~ result:", result)
   return result;
 }
 
 function transformComputersData(computersData: aq.ColumnTable): aq.Table {
-  // const items = computersData.select(aq.names('url', 'seller', 'company', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address', 'price2', 'price variation'))
-  const items = computersData.select(aq.names('url', 'seller', 'company', 'rating1', 'rating2', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address'))
+  // TODO: clean the data (columns names in particular)
 
-  return items.derive({ price_int: computer => op.parse_int(op.replace(op.replace(computer.price1, '€', ''), /[\s\\]/g, '')) })
-    .derive({ description_norm: aq.escape(c => normalize_description(c.description)) })
-    //.derive({brand: aq.escape(c => findBrandFrom (c.description_norm))})
-    .derive({ volume_int: computer => op.slice(op.match(computer.volume, /(\d*)/), 0, 1)[0] })
-    .select('url', 'description_norm', 'price1', 'price_int', 'quality', 'volume_int')
-    .filter(computer => computer.price_int) // remove null prices
-    .slice(0, 15) // limit to 15 first computers
+  // 'url', 'seller', 'company', 'rating1', 'rating2', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address'
+  const columnsToMatch: InferColumn[] = [
+    { name: 'url', definition: 'a link to a web page'},
+    { name: 'seller', definition: 'if the person who sell the object is "Vendeur pro"' },
+    { name: 'company', definition: 'name of a company' },
+    { name: 'quality', definition: 'the state of the object like "neuf", "new", "used", "bon état" ' },
+    { name: 'volume', definition: 'number in parenthesis' },
+    { name: 'description', definition: 'details of the computer, very specific informations like the storage capacity and memory'},
+    { name: 'price', definition: 'contains numbers with a currency char like $ or €' },
+    { name: 'zipcode', definition: 'a text containing a zipcode' },
+    { name: 'address', definition: 'a text containing a street name' },
+    { name: 'date', definition: 'a text containing date or time or both' },
+
+  ]
+
+  // Infere columns names from the first row
+   const inferedColumnsNames = inferScrappedColumnsNames('computer', columnsToMatch, computersData);
+  // const items = computersData.select(aq.names(inferScrappedColumnsNames)
+
+  //  const items = computersData.select(aq.names('url', 'seller', 'company', 'rating1', 'rating2', 'volume', 'definition', 'price1', 'quality', 'seller2', 'delivery', 'address'))
+  // // const items = computersData.select(aq.names('url', 'seller', 'company', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address', 'price2', 'price variation'))
+
+  // return items.derive({ price_int: computer => op.parse_int(op.replace(op.replace(computer.price1, '€', ''), /[\s\\]/g, '')) })
+  //   .derive({ description_norm: aq.escape(c => normalize_description(c.description)) })
+  //   //.derive({brand: aq.escape(c => findBrandFrom (c.description_norm))})
+  //   .derive({ volume_int: computer => op.slice(op.match(computer.volume, /(\d*)/), 0, 1)[0] })
+  //   .select('url', 'description_norm', 'price1', 'price_int', 'quality', 'volume_int')
+  //   .filter(computer => computer.price_int) // remove null prices
+  //   .slice(0, 15) // limit to 15 first computers
   //.slice(15)
 }
 
@@ -76,9 +97,9 @@ const watcher = watch(watchedDir, async (event, filename) => {
 
       const computersData = await ingest(watchedDir, filename);
       const computers = transformComputersData(computersData);
-      computers.print(100)
+      // computers.print(100)
 
-       const enrichedComputers = await extractComputerInfosFromDescription(computers)
+      //  const enrichedComputers = await extractComputerInfosFromDescription(computers)
 
       // const cleanComputers = enrichedComputers.map(computer => {
       //   return {

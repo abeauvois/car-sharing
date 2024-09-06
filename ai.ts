@@ -4,6 +4,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 //import { createOllama } from 'ollama-ai-provider';
 import ollama, { type GenerateRequest } from 'ollama';
 import { z } from 'zod';
+import type { ColumnTable, Table } from 'arquero';
 
 // Initialize the OpenAI client
 const openai = createOpenAI({
@@ -38,7 +39,7 @@ const carSchema = z.object({
 
 export async function extractCarInfos(url: string, description: string) {
   const { object } = await generateObject({
-    model:  openai('gpt-4o-mini'),
+    model: openai('gpt-4o-mini'),
     schema: carSchema,
     prompt: `Extract the car brand, model, and power (if available) from the following description: "${description}" and add the url ${url} as the first column. Keep in mind 
     the following car brands and their models:
@@ -68,7 +69,7 @@ export async function extractComputerInfos(computer: { description_norm: string 
   console.log("Openai thinking...");
 
   const { object } = await generateObject({
-    model:  openai('gpt-4o-mini'),
+    model: openai('gpt-4o-mini'),
     schema: computerSchema,
     prompt: `Extract the Computer brand, processor name, memory size, storage capacity and screen size (if available) from the following description: "${computer.description_norm}", when a value is null, write "unknown"`,
   });
@@ -77,8 +78,7 @@ export async function extractComputerInfos(computer: { description_norm: string 
 }
 
 // using a model without "generate object" feature
-
-export async function generateLocally(computers?: {description_norm: string}[]) {
+export async function generateLocally(computers?: { description_norm: string }[]) {
 
   if (!computers?.length) {
     console.log("No computers to analyse");
@@ -91,7 +91,7 @@ export async function generateLocally(computers?: {description_norm: string}[]) 
     "model": "llama3",
     "messages": [
       {
-        "role": "user", 
+        "role": "user",
         "content": `Extract the Computer brand, processor name, memory size, storage capacity and screen size (if available) 
 for each description in the following array : ${JSON.stringify(computers.map(c => c.description_norm))}? And return your answer as an array of json objects?
   `}],
@@ -99,9 +99,100 @@ for each description in the following array : ${JSON.stringify(computers.map(c =
   console.log("🚀 ~ generateLocally ~ generated:", generated.choices[0].message.content);
 
   return generated;
-
 }
 
+export type InferColumn = {
+  name: string;
+  definition: string;
+}
+
+export async function inferScrappedColumnsNames(domainName: string, columnsToMatch: InferColumn[], data: ColumnTable) {
+
+  const { cleanDataRowContent } = keepValidColumns(data);
+
+  const dataColumnNames = cleanDataRowContent.columnNames()
+  // console.log("🚀 ~ inferScrappedColumnsNames ~ cleanDataRowContent.data():", cleanDataRowContent.data())
+  // return 
+  const columnsNames = columnsToMatch.map(({ name }) => name);
+
+  const definitions = columnsToMatch.map((nm) => `${nm.name} - ${nm.definition}`).join("\n")
+
+  const getPromptForColumn = (columnName: string) => {
+
+   console.log("🚀 ~ inferScrappedColumnsNames ~  cleanDataRowContent.data()[columnName]:", cleanDataRowContent.data()[columnName])
+
+    return (`All values in this array ${JSON.stringify(cleanDataRowContent.data()[columnName])} are representing the same property of an ad of a ${domainName}.
+     I need you to infer the name of the property based on the following definitions:
+
+    ${definitions}
+
+  Finally this property should match one of following names: ${columnsNames.join(', ')}
+  In case there is no match, please return "unknown" as the property name.
+  Do not add any comment or word other than the infered property name.
+  `)
+  // Please explain how you did infer this column name.
+  };
+
+  // Always answer with only an array of strings, without additional information
+
+  // Finally return the array of ${cleanDataRowContent.numCols()} columns in the same order as corresponding columns of the provided table.
+  // Do not add any comment or word other than the array.
+
+  // console.log("🚀 ~ inferScrappedColumnsNames ~ prompt:", userPrompts[1].content)
+
+  let inferedNames = []
+
+  for (const columnName of dataColumnNames) {
+
+  const generated = await openaiClient.chat.completions.create({
+    "model": "llama3",
+    "messages": [
+      {
+        "role": "system",
+        "content": `You are a helpful data analyst in the domain of ${domainName} and you want to infer the name of properties of a ${domainName} from unstructured text.`
+      },
+      {
+        "role": "user",
+        "content": getPromptForColumn(columnName),
+      }
+    ],
+  })
+
+  const inferedColumnName = generated.choices[0].message.content || "unknown";
+
+  console.log("infered column name:", inferedColumnName,'\n');
+
+  const isInList = columnsNames.indexOf(inferedColumnName) >= 0? true : false;
+
+  inferedNames.push(isInList ? inferedColumnName : "unknown")
+  }
+  console.log("🚀 ~ inferScrappedColumnsNames ~ inferedNames:", inferedNames)
+
+  return inferedNames;
+}
+
+// remove indecies of columns with multi lines contents OR with more than 200 chars
+export function getValidIndices(row: Record<string, string>) {
+  return Object.entries(row)
+    .map(([key, value], i) => {
+      const result = (value.length < 200) && (!value.includes('\n')) ? i : undefined
+      // console.log(`🚀  ~ inferScrappedColumnsNames  ~ value.length:${i}(${value.length}) => ${result}:${value}`);
+      return result;
+    })
+    .filter(index => index !== undefined);
+}
+
+export function keepValidColumns(data: ColumnTable) {
+  const dataRow = data.sample(3) //.slice(1, 3);
+
+  const validColumnsIndices = getValidIndices(dataRow.object(0));
+
+  const cleanDataRowContent = dataRow.select(validColumnsIndices);
+
+  cleanDataRowContent.print();
+
+  return { cleanDataRowContent };
+}
 
 // ApiGenerateResponse
 // {

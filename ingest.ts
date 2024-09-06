@@ -5,19 +5,18 @@ import * as aq from 'arquero';
 import  { csvParse, type DSVRowArray } from "d3-dsv";
 
 export async function parseCSV(file: BunFile) {
-    console.log("🚀 ~ parseCSV ~ file:", file.size)
+    console.log("🚀 ~ parseCSV ~ file size:", file.size)
     const exist = await file.exists()
   
     if (!exist) {
       throw new Error(`File ${file.name} does not exist`)
-      exit()
     }
   
     const text = await file.text();
     return csvParse(text);
   }
   
-  export async function ingest(watchedDir: string, filename: string) {
+  export async function ingest(watchedDir: string, filename: string): Promise<aq.ColumnTable> {
     const files = [Bun.file(`${watchedDir}/${filename}`)]
     const parsedFiles = await Promise.all(files.map(parseCSV));
     const combinedData = parsedFiles.reduce((acc, data) => acc.concat(data), [] as DSVRowArray<string>[]);
