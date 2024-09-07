@@ -4,8 +4,10 @@ import { createOpenAI } from '@ai-sdk/openai';
 //import { createOllama } from 'ollama-ai-provider';
 import ollama, { type GenerateRequest } from 'ollama';
 import { z } from 'zod';
-import type { ColumnTable, Table } from 'arquero';
+import type { ColumnTable } from 'arquero';
 
+  export const UNKNOWN = 'unknown';
+  
 // Initialize the OpenAI client
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,7 +22,7 @@ const openaiClient = new OpenAI({
 // const model = ollama('llama3')
 
 // note:
-// When using Llama.cpp for object generation, it is important to choose a model that is 
+// When using Llama for object generation, it is important to choose a model that is 
 // capable of creating the object that you want. I had good results with openhermes2.5-mistral and mixtral, for example, but this depends on your use case.
 // see: https://modelfusion.dev/guide/function/generate-object/
 // const model = createOllama({
@@ -106,31 +108,31 @@ export type InferColumn = {
   definition: string;
 }
 
-export async function inferScrappedColumnsNames(domainName: string, columnsToMatch: InferColumn[], data: ColumnTable) {
+export async function inferScrappedColumnsNames(domainName: string, domainColumnsNames: InferColumn[], data: ColumnTable) {
 
-  const { cleanDataRowContent } = keepValidColumns(data);
+  const someRows = data.sample(3);
 
-  const dataColumnNames = cleanDataRowContent.columnNames()
-  // console.log("🚀 ~ inferScrappedColumnsNames ~ cleanDataRowContent.data():", cleanDataRowContent.data())
+  const dataColumnNames = someRows.columnNames()
+  // console.log("🚀 ~ inferScrappedColumnsNames ~ someRows.someRows():", someRows.data())
   // return 
-  const columnsNames = columnsToMatch.map(({ name }) => name);
+  const columnsNames = domainColumnsNames.map(({ name }) => name);
 
-  const definitions = columnsToMatch.map((nm) => `${nm.name} - ${nm.definition}`).join("\n")
+  const definitions = domainColumnsNames.map((nm) => `${nm.name} - ${nm.definition}`).join("\n")
 
   const getPromptForColumn = (columnName: string) => {
 
-   console.log("🚀 ~ inferScrappedColumnsNames ~  cleanDataRowContent.data()[columnName]:", cleanDataRowContent.data()[columnName])
+    console.log("🚀 ~ inferScrappedColumnsNames ~  someRows.someRows()[columnName]:", someRows.data()[columnName])
 
-    return (`All values in this array ${JSON.stringify(cleanDataRowContent.data()[columnName])} are representing the same property of an ad of a ${domainName}.
+    return (`All values in this array ${JSON.stringify(someRows.data()[columnName])} are representing the same property of an ad of a ${domainName}.
      I need you to infer the name of the property based on the following definitions:
 
     ${definitions}
 
-  Finally this property should match one of following names: ${columnsNames.join(', ')}
+  Finally this property must be one of the following: ${columnsNames.join(', ')}
   In case there is no match, please return "unknown" as the property name.
   Do not add any comment or word other than the infered property name.
   `)
-  // Please explain how you did infer this column name.
+    // Please explain how you did infer this column name.
   };
 
   // Always answer with only an array of strings, without additional information
@@ -140,35 +142,33 @@ export async function inferScrappedColumnsNames(domainName: string, columnsToMat
 
   // console.log("🚀 ~ inferScrappedColumnsNames ~ prompt:", userPrompts[1].content)
 
-  let inferedNames = []
+  let inferedNames: string[] = []
 
   for (const columnName of dataColumnNames) {
 
-  const generated = await openaiClient.chat.completions.create({
-    "model": "llama3",
-    "messages": [
-      {
-        "role": "system",
-        "content": `You are a helpful data analyst in the domain of ${domainName} and you want to infer the name of properties of a ${domainName} from unstructured text.`
-      },
-      {
-        "role": "user",
-        "content": getPromptForColumn(columnName),
-      }
-    ],
-  })
+    const generated = await openaiClient.chat.completions.create({
+      "model": "llama3",
+      "messages": [
+        {
+          "role": "system",
+          "content": `You are a helpful data analyst in the domain of ${domainName} and you want to infer the name of properties of a ${domainName} from unstructured text.`
+        },
+        {
+          "role": "user",
+          "content": getPromptForColumn(columnName),
+        }
+      ],
+    })
 
-  const inferedColumnName = generated.choices[0].message.content || "unknown";
+    const inferedColumnName = generated.choices[0].message.content;
 
-  console.log("infered column name:", inferedColumnName,'\n');
+    console.log("infered column name:", inferedColumnName, '\n');
 
-  const isInList = columnsNames.indexOf(inferedColumnName) >= 0? true : false;
-
-  inferedNames.push(isInList ? inferedColumnName : "unknown")
+    inferedNames.push(getPropertyInSentenceFromList( columnsNames, inferedNames, inferedColumnName))
   }
   console.log("🚀 ~ inferScrappedColumnsNames ~ inferedNames:", inferedNames)
 
-  return inferedNames;
+  return inferedNames
 }
 
 // remove indecies of columns with multi lines contents OR with more than 200 chars
@@ -189,9 +189,27 @@ export function keepValidColumns(data: ColumnTable) {
 
   const cleanDataRowContent = dataRow.select(validColumnsIndices);
 
-  cleanDataRowContent.print();
-
   return { cleanDataRowContent };
+}
+
+export function getPropertyInSentenceFromList(domainPropertiesList: string[], foundProperties: string[] = [], sentence?: string | null) {
+
+  if (!sentence) return UNKNOWN
+
+  const newProperty = domainPropertiesList
+    .filter(property => sentence.includes(property))
+    .pop() || UNKNOWN
+  
+  // count property in propertiesFoundList
+  // example of propertiesFoundList: ["url1", "price", "url2"]
+  // then count how many times property is in propertiesFoundList
+  const countProperties = foundProperties
+     .filter(propertyFound => propertyFound.includes(newProperty))
+     .length
+
+  const suffix = countProperties >= 1 ? "_" + countProperties : "";
+
+  return newProperty+suffix;
 }
 
 // ApiGenerateResponse

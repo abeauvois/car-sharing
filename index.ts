@@ -4,7 +4,8 @@ import { exit } from 'process';
 import { watch } from "fs";
 import { ingest } from './ingest';
 import { findBrandFrom } from './car.domain';
-import { extractCarInfos, extractComputerInfos, generateLocally, inferScrappedColumnsNames, type InferColumn } from './ai';
+import { extractCarInfos, extractComputerInfos, generateLocally, getValidIndices, inferScrappedColumnsNames, keepValidColumns, UNKNOWN, type InferColumn } from './ai';
+import { _decodeChunks } from 'openai/streaming.mjs';
 
 const watchedDir = `${import.meta.dir}/csv`
 
@@ -48,7 +49,7 @@ async function extractComputerInfosFromDescription(computers: aq.Table) {
   return result;
 }
 
-function transformComputersData(computersData: aq.ColumnTable): aq.Table {
+async function transformComputersData(computersData: aq.ColumnTable): Promise<aq.ColumnTable> {
   // TODO: clean the data (columns names in particular)
 
   // 'url', 'seller', 'company', 'rating1', 'rating2', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address'
@@ -56,20 +57,28 @@ function transformComputersData(computersData: aq.ColumnTable): aq.Table {
     { name: 'url', definition: 'a link to a web page'},
     { name: 'seller', definition: 'if the person who sell the object is "Vendeur pro"' },
     { name: 'company', definition: 'name of a company' },
-    { name: 'quality', definition: 'the state of the object like "neuf", "new", "used", "bon état" ' },
+    { name: 'quality', definition: 'the state of the computer like usually including the word "état" ' },
     { name: 'volume', definition: 'number in parenthesis' },
     { name: 'description', definition: 'details of the computer, very specific informations like the storage capacity and memory'},
     { name: 'price', definition: 'contains numbers with a currency char like $ or €' },
     { name: 'zipcode', definition: 'a text containing a zipcode' },
     { name: 'address', definition: 'a text containing a street name' },
     { name: 'date', definition: 'a text containing date or time or both' },
-
+    { name: 'delivery', definition: 'if the computer can be delivered, can be "Livraison possible"' },
+    { name: 'pricevariation', definition: 'if the computer price has changed, can be "Baisse de prix"' },
+    { name: 'unknown', definition: 'if no definition matches use this' },
   ]
 
   // Infere columns names from the first row
-   const inferedColumnsNames = inferScrappedColumnsNames('computer', columnsToMatch, computersData);
-  // const items = computersData.select(aq.names(inferScrappedColumnsNames)
+   const inferedColumnsNames = await inferScrappedColumnsNames('computer', columnsToMatch, computersData);
 
+
+   const items = computersData.select(aq.names(inferedColumnsNames)).select(inferedColumnsNames.filter(c => !c.includes(UNKNOWN)));
+   
+   // Filter columns
+   const { cleanDataRowContent } = keepValidColumns(items)
+   
+  return cleanDataRowContent;
   //  const items = computersData.select(aq.names('url', 'seller', 'company', 'rating1', 'rating2', 'volume', 'definition', 'price1', 'quality', 'seller2', 'delivery', 'address'))
   // // const items = computersData.select(aq.names('url', 'seller', 'company', 'volume', 'description', 'price1', 'quality', 'seller2', 'delivery', 'address', 'price2', 'price variation'))
 
@@ -96,8 +105,9 @@ const watcher = watch(watchedDir, async (event, filename) => {
       console.log('Processing computers data...');
 
       const computersData = await ingest(watchedDir, filename);
-      const computers = transformComputersData(computersData);
-      // computers.print(100)
+      const computers = await transformComputersData(computersData);
+      computers.print(10)
+      return
 
       //  const enrichedComputers = await extractComputerInfosFromDescription(computers)
 
@@ -119,7 +129,7 @@ const watcher = watch(watchedDir, async (event, filename) => {
 
     const carsData = await ingest(watchedDir, filename);
     const cars = transformCarsData(carsData);
-    cars.print(100)
+    cars.print(10)
     //cars.print({limit: 100})
 
     extractCarInfosFromDescription(cars)
